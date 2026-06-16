@@ -288,7 +288,8 @@ _YES_RE = re.compile(
     re.IGNORECASE,
 )
 _NO_RE = re.compile(
-    r"\b(?:no\b|not\s+included|not\s+opted|not\s+covered|nil\b|excluded|n/a\b|na\b|not\s+applicable)\b",
+    # "no\b(?!\s*[.\d])" — excludes "No. 1" (number) and "No." abbreviation
+    r"(?:\bno\b(?!\s*[.\d])|not\s+included|not\s+opted|not\s+covered|\bnil\b|\bexcluded\b|\bn/a\b|\bna\b|not\s+applicable)",
     re.IGNORECASE,
 )
 
@@ -413,13 +414,28 @@ def _parse_number(s: str) -> float | None:
 
 def _build_kv(lines: list[str]) -> dict[str, str]:
     kv: dict[str, str] = {}
-    for line in lines:
-        if ":" in line:
+    n = len(lines)
+    for i, line in enumerate(lines):
+        # TATA AIG 3-line pattern: "Label\n:\nValue" — must be checked FIRST
+        # because a bare ":" also satisfies '":" in line' below
+        if line.strip() == ":":
+            if i > 0 and i + 1 < n:
+                label = _norm(lines[i - 1].strip())
+                value = _clean(lines[i + 1])
+                if label and value and len(label) < 80:
+                    kv[label] = value
+        elif ":" in line:
             parts = line.split(":", 1)
             label = _norm(parts[0].strip())
             value = _clean(parts[1].strip())
-            if label and value and len(label) < 80:
-                kv[label] = value
+            if label and len(label) < 80:
+                if value:
+                    kv[label] = value
+                elif i + 1 < n:
+                    # Value on next line (e.g. "Client Name:\n Vijaykumar Bandi")
+                    nv = _clean(lines[i + 1])
+                    if nv and ":" not in lines[i + 1]:
+                        kv[label] = nv
         else:
             m = re.match(r"^(.+?)\s{3,}(.+)$", line)
             if m:
@@ -526,6 +542,7 @@ def _find_amount(
     primary_patterns: list[str],
     fallback_patterns: list[str],
     min_value: float = 100.0,
+    search_window: int = 4,
 ) -> float | None:
     NUMBER_RE = re.compile(r"[\d,]+(?:\.\d{1,2})?")
     CURRENCY  = re.compile(r"(?:rs\.?|inr|₹)\s*", re.I)
@@ -544,7 +561,8 @@ def _find_amount(
             compiled = re.compile(pat, re.I)
             for i, line in enumerate(lines):
                 if compiled.search(line):
-                    snippet = " ".join(lines[i:i+3])
+                    # wider window for multi-column table layouts
+                    snippet = " ".join(lines[i:i+search_window])
                     nums = _nums(snippet)
                     if nums:
                         return nums[0]
@@ -614,7 +632,9 @@ def _detect_addons(
     search_text   = addon_section if addon_section else full_text
 
     def _negated(m: re.Match, text: str) -> bool:
-        ctx = text[max(0, m.start()-40): min(len(text), m.end()+80)]
+        # 50-char window avoids false negation from unrelated "Not Applicable"
+        # text that appears in adjacent columns/fields (e.g. Hypothecation details)
+        ctx = text[max(0, m.start()-40): min(len(text), m.end()+50)]
         return bool(_NEGATION.search(ctx))
 
     # ── Pass 1: keyword presence in add-on section ────────────────────────────
@@ -675,12 +695,15 @@ def _detect_addons(
 # ─── public entry point ───────────────────────────────────────────────────────
 
 def extract_policy_data(path: str) -> dict:
-    full_text, lines = _pymupdf_lines(path)
-
+    full_text_py, lines_py = _pymupdf_lines(path)
     plumber = _plumber_text(path)
-    if len(plumber) > len(full_text):
-        full_text = plumber
-        lines = [l for l in plumber.splitlines() if l.strip()]
+
+    # Full text: use whichever is richer (pdfplumber captures layout text better)
+    full_text = plumber if len(plumber) > len(full_text_py) else full_text_py
+
+    # Lines: ALWAYS use PyMuPDF — pdfplumber layout mode merges table columns
+    # onto one line, causing false Yes/No matches and wrong KV field values.
+    lines = lines_py if lines_py else [l for l in plumber.splitlines() if l.strip()]
 
     if not full_text.strip():
         raise ValueError("No text extracted — PDF may be scanned/image-only.")
@@ -707,10 +730,36 @@ def extract_policy_data(path: str) -> dict:
         "policyholder", "proposer", "proposername",
         "nameofpolicyholder", "customersname", "customername",
         "nameoftheinsured", "namedinsured", "policyownername",
-        "insuredname", "dearmr", "deardr", "dearms",
+        "dearmr", "deardr", "dearms",
+        # ICICI / Bajaj / Zuno field variants
+        "nameofproposer", "proposedinsured", "applicantname",
+        "policyholderName", "insuredfirstname", "customersfullname",
     ) or "N/A"
-    if insured_name and len(insured_name) > 60:
-        insured_name = insured_name[:60].rsplit(" ", 1)[0]
+
+    if insured_name and insured_name != "N/A":
+        # Strip trailing noise: dates, known label keywords after the name
+        insured_name = re.sub(
+            r"\s+\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4}.*", "", insured_name
+        )
+        insured_name = re.sub(
+            r"\s+(?:quote|issuance|policy|date|valid|expires|period|number|no\.?).*",
+            "", insured_name, flags=re.I,
+        )
+        # If the "name" value is actually the insurer name, discard it
+        if _detect_insurer(insured_name) != "N/A":
+            insured_name = "N/A"
+        # Trim to 60 chars at word boundary
+        elif len(insured_name) > 60:
+            insured_name = insured_name[:60].rsplit(" ", 1)[0]
+
+    # Regex fallback: "Dear Mr./Mrs. Name," or similar greeting in document
+    if insured_name == "N/A":
+        m_name = re.search(
+            r"\bDear\s+(?:Mr\.?|Mrs\.?|Ms\.?|Dr\.?)\s+([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+){0,3})",
+            full_text,
+        )
+        if m_name:
+            insured_name = _clean(m_name.group(1))
 
     registration_number = _find_registration(full_text, kv)
     expiry_date         = _find_expiry(full_text, kv, lines)
@@ -718,6 +767,8 @@ def extract_policy_data(path: str) -> dict:
     plan_coverage       = _detect_plan_coverage(full_text)
 
     # ── IDV — require large value (car IDVs are typically > 1 lakh) ──────────
+    # Wide window (10 lines) handles multi-column tables where IDV header and
+    # value land on separate lines (TATA AIG layout).
     idv = _find_amount(lines, table_rows,
         primary_patterns=[
             r"total\s+idv\b",
@@ -726,7 +777,8 @@ def extract_policy_data(path: str) -> dict:
             r"\bidv\b",
         ],
         fallback_patterns=[r"sum\s+insured\b", r"declared\s+value\b"],
-        min_value=50000,  # car IDVs are never tiny
+        min_value=50000,
+        search_window=10,   # look further ahead for table-format PDFs
     )
 
     # ── Premium — prefer TOTAL (with GST) to match expected Excel values ──────
