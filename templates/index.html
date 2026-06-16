@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Policy Comparison Tool</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #f0f4f8;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 4px 32px rgba(0,0,0,0.10);
+      padding: 40px 48px;
+      max-width: 680px;
+      width: 100%;
+    }
+
+    .logo-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 6px;
+    }
+
+    .logo-icon {
+      width: 44px;
+      height: 44px;
+      background: linear-gradient(135deg, #002060 60%, #3A7D22 100%);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .logo-icon svg { width: 24px; height: 24px; fill: #fff; }
+
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #002060;
+    }
+
+    .subtitle {
+      font-size: 0.9rem;
+      color: #64748b;
+      margin-bottom: 32px;
+    }
+
+    .drop-zone {
+      border: 2.5px dashed #b0bec5;
+      border-radius: 12px;
+      padding: 40px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      position: relative;
+      background: #fafbfc;
+    }
+
+    .drop-zone.drag-over {
+      border-color: #002060;
+      background: #e8eef8;
+    }
+
+    .drop-zone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+
+    .drop-icon {
+      font-size: 2.5rem;
+      margin-bottom: 10px;
+    }
+
+    .drop-text {
+      font-size: 1rem;
+      color: #475569;
+      font-weight: 500;
+    }
+
+    .drop-hint {
+      font-size: 0.8rem;
+      color: #94a3b8;
+      margin-top: 6px;
+    }
+
+    .file-list {
+      margin-top: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .file-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: #f1f5f9;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 0.875rem;
+      color: #334155;
+    }
+
+    .file-item .file-icon { font-size: 1.2rem; }
+
+    .file-item .file-name {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .file-item .file-size { color: #94a3b8; font-size: 0.78rem; }
+
+    .file-item .remove-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: #94a3b8;
+      font-size: 1rem;
+      padding: 2px 4px;
+      border-radius: 4px;
+      transition: color 0.15s;
+    }
+
+    .file-item .remove-btn:hover { color: #ef4444; }
+
+    .counter {
+      font-size: 0.82rem;
+      color: #64748b;
+      margin-top: 10px;
+      text-align: right;
+    }
+
+    .counter.maxed { color: #ef4444; font-weight: 600; }
+
+    .btn {
+      display: block;
+      width: 100%;
+      margin-top: 24px;
+      padding: 14px;
+      font-size: 1rem;
+      font-weight: 600;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: opacity 0.2s, transform 0.1s;
+    }
+
+    .btn:active { transform: scale(0.98); }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #002060, #0a4a9e);
+      color: #fff;
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    .btn-download {
+      background: linear-gradient(135deg, #3A7D22, #56b836);
+      color: #fff;
+      margin-top: 14px;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .status {
+      margin-top: 20px;
+      border-radius: 10px;
+      padding: 14px 18px;
+      font-size: 0.875rem;
+      display: none;
+    }
+
+    .status.loading {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: #eff6ff;
+      color: #1d4ed8;
+    }
+
+    .status.success {
+      display: block;
+      background: #f0fdf4;
+      color: #166534;
+    }
+
+    .status.error {
+      display: block;
+      background: #fef2f2;
+      color: #991b1b;
+    }
+
+    .spinner {
+      width: 20px; height: 20px;
+      border: 3px solid #bfdbfe;
+      border-top-color: #1d4ed8;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      flex-shrink: 0;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .warnings {
+      margin-top: 10px;
+      font-size: 0.8rem;
+      color: #92400e;
+      background: #fffbeb;
+      border-radius: 6px;
+      padding: 8px 12px;
+    }
+
+    .steps {
+      display: flex;
+      gap: 6px;
+      margin-top: 20px;
+      justify-content: center;
+    }
+
+    .step {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      flex: 1;
+      font-size: 0.72rem;
+      color: #94a3b8;
+    }
+
+    .step-dot {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      background: #e2e8f0;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 0.8rem; color: #94a3b8;
+    }
+
+    .step.active .step-dot { background: #002060; color: #fff; }
+    .step.done .step-dot { background: #3A7D22; color: #fff; }
+    .step-line { flex: 1; height: 2px; background: #e2e8f0; align-self: center; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo-row">
+      <div class="logo-icon">
+        <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm4 18H6V4h7v5h5v11zM8 15h8v1H8zm0-3h8v1H8zm0-3h5v1H8z"/></svg>
+      </div>
+      <h1>Policy Comparison Tool</h1>
+    </div>
+    <p class="subtitle">Upload up to 5 motor insurance PDFs — get a side-by-side add-on comparison Excel in seconds.</p>
+
+    <div class="drop-zone" id="dropZone">
+      <input type="file" id="fileInput" accept=".pdf" multiple />
+      <div class="drop-icon">📄</div>
+      <div class="drop-text">Drop PDF policies here or <strong>click to browse</strong></div>
+      <div class="drop-hint">PDF only · Max 5 files · 50 MB each</div>
+    </div>
+
+    <div class="file-list" id="fileList"></div>
+    <div class="counter" id="counter"></div>
+
+    <div style="display:flex;gap:8px;margin-top:24px;">
+      <button class="btn btn-primary" id="analyzeBtn" disabled style="flex:1;margin-top:0">
+        Analyze &amp; Generate Comparison
+      </button>
+      <button class="btn" id="debugBtn" disabled title="Upload one PDF and inspect raw extracted text"
+        style="margin-top:0;background:#f1f5f9;color:#475569;border:1.5px solid #cbd5e1;flex:0 0 auto;padding:14px 18px;font-size:0.85rem;">
+        Debug PDF
+      </button>
+    </div>
+
+    <div class="status loading" id="statusLoading">
+      <div class="spinner"></div>
+      <div>
+        <strong>Processing...</strong><br>
+        <span id="statusMsg">Extracting text from PDFs and querying AI...</span>
+      </div>
+    </div>
+
+    <div class="status success" id="statusSuccess"></div>
+    <div class="status error" id="statusError"></div>
+  </div>
+
+  <script>
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const fileList = document.getElementById('fileList');
+    const counter = document.getElementById('counter');
+    const analyzeBtn = document.getElementById('analyzeBtn');
+    const statusLoading = document.getElementById('statusLoading');
+    const statusSuccess = document.getElementById('statusSuccess');
+    const statusError = document.getElementById('statusError');
+
+    let selectedFiles = [];
+
+    function formatSize(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+    }
+
+    function renderFiles() {
+      fileList.innerHTML = '';
+      selectedFiles.forEach((f, i) => {
+        const div = document.createElement('div');
+        div.className = 'file-item';
+        div.innerHTML = `
+          <span class="file-icon">📑</span>
+          <span class="file-name">${f.name}</span>
+          <span class="file-size">${formatSize(f.size)}</span>
+          <button class="remove-btn" data-idx="${i}" title="Remove">✕</button>
+        `;
+        fileList.appendChild(div);
+      });
+
+      const n = selectedFiles.length;
+      counter.textContent = n === 0 ? '' : `${n}/5 file${n > 1 ? 's' : ''} selected`;
+      counter.className = 'counter' + (n >= 5 ? ' maxed' : '');
+      analyzeBtn.disabled = n === 0;
+      if (typeof debugBtn !== 'undefined') debugBtn.disabled = n === 0;
+    }
+
+    fileInput.addEventListener('change', () => {
+      addFiles(Array.from(fileInput.files));
+      fileInput.value = '';
+    });
+
+    fileList.addEventListener('click', e => {
+      const btn = e.target.closest('.remove-btn');
+      if (!btn) return;
+      const idx = parseInt(btn.dataset.idx);
+      selectedFiles.splice(idx, 1);
+      renderFiles();
+    });
+
+    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropZone.classList.remove('drag-over');
+      const files = Array.from(e.dataTransfer.files).filter(f => f.type === 'application/pdf');
+      addFiles(files);
+    });
+
+    function addFiles(files) {
+      for (const f of files) {
+        if (selectedFiles.length >= 5) break;
+        if (!f.name.toLowerCase().endsWith('.pdf')) continue;
+        if (!selectedFiles.find(x => x.name === f.name && x.size === f.size)) {
+          selectedFiles.push(f);
+        }
+      }
+      renderFiles();
+    }
+
+    function hideStatuses() {
+      statusLoading.style.display = 'none';
+      statusSuccess.style.display = 'none';
+      statusError.style.display = 'none';
+    }
+
+    const debugBtn = document.getElementById('debugBtn');
+
+    function updateBtns() {
+      const n = selectedFiles.length;
+      analyzeBtn.disabled = n === 0;
+      debugBtn.disabled   = n === 0;
+    }
+
+    debugBtn.addEventListener('click', async () => {
+      if (selectedFiles.length === 0) return;
+      hideStatuses();
+      statusLoading.style.display = 'flex';
+      document.getElementById('statusMsg').textContent = 'Extracting raw text from PDF...';
+      debugBtn.disabled = true;
+
+      const formData = new FormData();
+      formData.append('policy', selectedFiles[0]);   // only first file
+
+      try {
+        const res = await fetch('/debug', { method: 'POST', body: formData });
+        const data = await res.json();
+        hideStatuses();
+        statusSuccess.style.display = 'block';
+        statusSuccess.innerHTML = `
+          <strong>Debug output for: ${selectedFiles[0].name}</strong><br>
+          <details style="margin-top:8px"><summary>Parsed result</summary>
+            <pre style="font-size:0.75rem;white-space:pre-wrap;background:#f8fafc;padding:10px;border-radius:6px;margin-top:6px">${JSON.stringify(data.parsed_result, null, 2)}</pre>
+          </details>
+          <details style="margin-top:6px"><summary>KV pairs found (${Object.keys(data.kv_pairs||{}).length})</summary>
+            <pre style="font-size:0.72rem;white-space:pre-wrap;background:#f8fafc;padding:10px;border-radius:6px;margin-top:6px">${JSON.stringify(data.kv_pairs, null, 2)}</pre>
+          </details>
+          <details style="margin-top:6px"><summary>Raw lines (first 80)</summary>
+            <pre style="font-size:0.72rem;white-space:pre-wrap;background:#f8fafc;padding:10px;border-radius:6px;margin-top:6px">${(data.lines_sample||[]).join('\n')}</pre>
+          </details>
+          <details style="margin-top:6px"><summary>Tables found</summary>
+            <pre style="font-size:0.72rem;white-space:pre-wrap;background:#f8fafc;padding:10px;border-radius:6px;margin-top:6px">${JSON.stringify(data.tables, null, 2)}</pre>
+          </details>`;
+      } catch (err) {
+        hideStatuses();
+        statusError.style.display = 'block';
+        statusError.innerHTML = `<strong>Error:</strong> ${err.message}`;
+      } finally {
+        debugBtn.disabled = selectedFiles.length === 0;
+      }
+    });
+
+    analyzeBtn.addEventListener('click', async () => {
+      if (selectedFiles.length === 0) return;
+
+      hideStatuses();
+      statusLoading.style.display = 'flex';
+      analyzeBtn.disabled = true;
+
+      const formData = new FormData();
+      selectedFiles.forEach(f => formData.append('policies', f));
+
+      try {
+        const res = await fetch('/analyze', { method: 'POST', body: formData });
+        const data = await res.json();
+
+        hideStatuses();
+
+        if (!res.ok) {
+          statusError.style.display = 'block';
+          statusError.innerHTML = `<strong>Error:</strong> ${data.error || 'Something went wrong.'}` +
+            (data.details ? `<br><small>${data.details.join('<br>')}</small>` : '');
+          return;
+        }
+
+        let html = `<strong>✅ Done!</strong> Compared <strong>${data.policies_processed}</strong> polic${data.policies_processed > 1 ? 'ies' : 'y'} successfully.<br>`;
+        if (data.warnings && data.warnings.length) {
+          html += `<div class="warnings">⚠️ Warnings:<br>${data.warnings.join('<br>')}</div>`;
+        }
+        html += `<a href="/download/${encodeURIComponent(data.file)}" class="btn btn-download" download>
+          ⬇ Download Comparison Excel
+        </a>`;
+        statusSuccess.style.display = 'block';
+        statusSuccess.innerHTML = html;
+
+        // Clear files after success
+        selectedFiles = [];
+        renderFiles();
+      } catch (err) {
+        hideStatuses();
+        statusError.style.display = 'block';
+        statusError.innerHTML = `<strong>Network error:</strong> ${err.message}`;
+      } finally {
+        analyzeBtn.disabled = selectedFiles.length === 0;
+      }
+    });
+  </script>
+</body>
+</html>
