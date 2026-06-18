@@ -4,6 +4,7 @@ from flask import Flask, render_template, request, send_file, jsonify
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
+from openpyxl.drawing.image import Image as XLImage
 
 from extractor import (
     extract_policy_data, CORE_ADDONS, EXTENDED_ADDONS,
@@ -39,6 +40,16 @@ def build_comparison_excel(policies: list, output_path: str):
     center = Alignment(horizontal="center", vertical="center", wrap_text=True)
     right  = Alignment(horizontal="right",  vertical="center", wrap_text=True)
     left   = Alignment(horizontal="left",   vertical="center", wrap_text=True)
+
+    # ── logo ────────────────────────────────────────────────────────────────
+    logo_path = os.path.join(os.path.dirname(__file__), "logo.jpeg")
+    if os.path.exists(logo_path):
+        logo_img = XLImage(logo_path)
+        logo_img.width  = 130
+        logo_img.height = 65
+        logo_img.anchor = "A1"
+        ws.add_image(logo_img)
+        ws.row_dimensions[1].height = 50
 
     first = policies[0]
     n     = len(policies)
