@@ -24,7 +24,7 @@ KNOWN_INSURERS = [
     ("IFFCO Tokio",         [r"iffco.{0,4}tokio"]),
     ("Future Generali",     [r"future\s+generali"]),
     ("Go Digit",            [r"go\s*digit", r"\bdigit\s+insurance\b"]),
-    ("Chola MS",            [r"chola(?:mandalam)?\s*ms", r"cholamandalam"]),
+    ("Chola MS",            [r"chola(?:mandalam)?\s*ms", r"cholamandalam", r"\bchola\b"]),
     ("Magma HDI",           [r"magma\s*hdi", r"\bmagma\b"]),
     ("Shriram",             [r"shriram\s+gen(?:eral)?"]),
     ("Universal Sompo",     [r"universal\s+sompo"]),
@@ -49,25 +49,38 @@ ADDON_TERMS: dict[str, list[str]] = {
         "depreciation reimbursement", "depreciation waiver", "dep protection",
         "dep waiver", "dep shield", "depreciation cover", "depreciation protect",
         "zero depreciation", "nil depreciation", "nil dep", "zero dep",
-        "bumper to bumper",
+        "bumper to bumper", "bumper 2 bumper",
         "zero wear and tear",
         "acc dep waiver", "accessory depreciation waiver",
+        "zero dep claim", "zero depreciation claim", "depreciation claim",
+        "100% depreciation cover", "full invoice value of parts",
+        "no depreciation cover", "complete cover plus",        # ICICI / generic marketing names
+        "total protect cover",
         # catch-all: any mention of depreciation in add-on context
         "depreciation",
     ],
 
     "Engine Protection": [
         "engine secure", "engine protector", "engine protect",
-        "engine guard", "engine care", "engine cover",
-        "engine and gearbox", "gear box protect", "engine damage",
+        "engine guard", "engine gaurd",                         # SBI spells it both ways
+        "engine care", "engine cover",
+        "engine and gearbox", "engine and gear box protect", "engine and gear box",
+        "engine and gear-box protect", "engine & gear box protector",
+        "engine & gearbox protect", "engine gearbox protect",
+        "gear box protect", "engine damage",
         "hydrostatic lock", "water ingress cover", "engine ingress",
         "consequential engine damage", "engine restore",
+        "undercarriage damage cover", "engine internal parts cover",
+        "engine protect plus",                                  # ICICI
+        "engine secure cover",                                  # TATA AIG
     ],
 
     "Consumables Cover": [
         "consumable expenses protect", "consumables protection",
+        "cover for consumables", "cost of consumable items",     # HDFC ERGO
         "consumable replacement", "consumable expenses",
         "consumables add on", "consumables",
+        "consumable cover", "consumables protect",
         "nuts bolts", "oil grease", "engine oil cover",
         "fluid replacement", "lubricant cover",
     ],
@@ -75,11 +88,15 @@ ADDON_TERMS: dict[str, list[str]] = {
     "Road Side Assistance": [
         "24x7 spot assistance", "spot assistance", "on spot assistance",
         "road side assistance", "roadside assistance", "road assist",
+        "basic road assistance", "basic road assist",            # SBI phrasing
+        "car breakdown assistance", "car breakdown cover",       # GoDigit phrasing
         "emergency road service", "breakdown assistance", "breakdown assist",
         "breakdown rescue", "towing assistance", "towing service",
         "on call assistance", "flat tyre support", "battery jumpstart",
         "fuel delivery", "emergency mobility", "on road assistance",
-        "breakdown support",
+        "breakdown support", "emergency assistance cover",       # HDFC ERGO
+        "il smart assist", "smart assist", "smart saver plus",
+        "smart save pro",                                        # Royal Sundaram
         # generic RSA abbreviation — word-bounded so doesn't match "persona"
         "rsa",
     ],
@@ -91,7 +108,9 @@ ADDON_TERMS: dict[str, list[str]] = {
         "invoice value guarantee", "invoice shield", "invoice gap cover",
         "invoice price protection", "full invoice cover",
         "new vehicle replacement cover", "replacement cost cover",
-        "purchase price protection",
+        "purchase price protection", "vehicle replacement value plus",  # Royal Sundaram
+        "rpi",                                                   # Iffco Tokio abbreviation
+        "rti cover", "rti",
     ],
 
     "Tyre Protection": [
@@ -100,6 +119,7 @@ ADDON_TERMS: dict[str, list[str]] = {
         "tire protect", "tire cover",
         "rim protector", "rim damage cover",
         "alloy wheel cover", "tyre burst",
+        "tyre secure cover",                                     # TATA AIG
     ],
 
     "Emergency Transport & Hotel": [
@@ -107,6 +127,8 @@ ADDON_TERMS: dict[str, list[str]] = {
         "emergency hotel expenses", "alternate accommodation",
         "emergency travel assistance", "hotel stay expenses",
         "hotel expenses", "emergency transport",
+        "higher protection and removal costs",                   # HDFC ERGO
+        "removal of debris", "debris removal cover",
     ],
 
     "Personal Belongings Cover": [
@@ -116,6 +138,7 @@ ADDON_TERMS: dict[str, list[str]] = {
         "loss of personal", "belongings cover",
         "laptop cover", "mobile cover", "baggage cover",
         "item protection", "cabin contents",
+        "loss of baggage cover", "personal baggage",
     ],
 
     "Key Replacement": [
@@ -123,8 +146,10 @@ ADDON_TERMS: dict[str, list[str]] = {
         "key and lock protect", "keys and locks protect",
         "lock and key replacement", "key replacement",
         "key protect", "key loss cover", "key care",
+        "key replacement cover",
         "smart key cover", "smart key protection",
         "key loss assistance", "lost key cover", "key fob cover",
+        "key and lock cover", "lockset replacement",
     ],
 
     "Emergency Medical Expenses": [
@@ -147,6 +172,7 @@ ADDON_TERMS: dict[str, list[str]] = {
         "paid driver cover",
         "paid driver liability",
         "cover for paid driver",
+        "ll to paid driver",
         # ICICI page 2: just "Paid Driver" listed as add-on line item
         "paid driver",
     ],
@@ -159,6 +185,8 @@ ADDON_TERMS: dict[str, list[str]] = {
         "compulsory pa owner driver",
         "compulsory pa for owner",
         "compulsory pa",                      # Bajaj/TATA AIG: "Compulsory PA for owner driver"
+        "compulsory personal accident cover",
+        "cpa cover",
         "pa cover for owner driver",
         "pa cover owner driver",
         "pa cover owner",                     # ICICI: "PA Cover - Owner Driver"
@@ -177,6 +205,8 @@ ADDON_TERMS: dict[str, list[str]] = {
         "imt 23", "imt23",
         "repair of glass rubber plastic",
         "repair of glass.*plastic",
+        "repair of glass fibre plastic rubber parts",
+        "glass fibre plastic rubber cover",
         "lamps tyres tubes",
         "fitments cover",
     ],
@@ -187,7 +217,7 @@ ADDON_TERMS: dict[str, list[str]] = {
         "no claim bonus protection", "no claim bonus protect",
         "ncb saver", "bonus protection", "bonus protect",
         "bonus retention", "claim shield", "ncb guard",
-        "bonus lock",
+        "bonus lock", "ncb protector cover",
     ],
 
     "IMT 25 (CNG/LPG)": [
@@ -203,6 +233,9 @@ ADDON_TERMS: dict[str, list[str]] = {
         "co-passenger cover", "co passenger cover",
         "unnamed passenger cover", "named passenger cover",
         "occupant injury cover", "family passenger cover",
+        "additional personal accident",                          # HDFC ERGO
+        "enhanced pa cover",                                      # IMT 47 marketing name
+        "accident shield",                                        # Go Digit PA top-up bundle
     ],
 
     "Glass Cover": [
@@ -210,6 +243,7 @@ ADDON_TERMS: dict[str, list[str]] = {
         "glass secure", "glass rubber plastic",
         "windscreen protection", "mirror cover",
         "window glass cover", "sunroof cover", "glass cover",
+        "windscreen cover", "windshield protect",
     ],
 
     "Daily Allowance": [
@@ -217,11 +251,18 @@ ADDON_TERMS: dict[str, list[str]] = {
         "alternate transport", "travel assistance",
         "taxi reimbursement", "emergency taxi",
         "daily commute allowance",
+        "daily conveyance benefit", "conveyance benefit",        # Go Digit
+        "garage cash",                                            # ICICI Lombard
+        "loss of use", "down time protection",                   # HDFC ERGO
+        "daily cash benefit",
     ],
 
     "Car Replacement": [
         "replacement vehicle", "courtesy car",
         "substitute vehicle", "car replacement",
+        "hire car cover",                                         # TATA AIG
+        "vehicle replacement advantage",                          # Go Digit top-up cover
+        "standby vehicle",
     ],
 
     "Electrical Accessories": [
@@ -238,20 +279,35 @@ ADDON_TERMS: dict[str, list[str]] = {
         "ev battery cover", "battery secure", "battery protection",
         "charger cover", "charging equipment cover",
         "ev secure", "battery replacement cover", "cable cover",
+        "hybrid electric car shield", "ev shield",               # Royal Sundaram / Go Digit
+        "electric surge secure",                                  # TATA AIG (EV add-on)
+        "battery degradation cover", "drive motor cover",
+        "ev roadside assistance", "charging point cover",
     ],
 
     "Loan Protection": [
         "emi protection", "loan shield", "emi secure",
         "instalment protection", "loan cover",
-        "finance protection", "loan guard",
+        "finance protection", "loan guard", "emi protector",      # HDFC ERGO
     ],
 
     "Smart Assistance": [
         "il smart assist", "smart assist", "smart saver plus",
+        "smart save pro",                                        # Royal Sundaram
     ],
 
     "IMT 47": [
         "imt 47", "imt47", "enhanced pa cover",
+    ],
+
+    "Voluntary Deductible": [
+        "voluntary deductible",                                   # HDFC ERGO / Royal Sundaram
+        "voluntary excess",
+    ],
+
+    "Pay As You Drive": [
+        "pay as you drive", "payd cover", "limit sure-pay as you drive",
+        "kilometer based cover", "usage based cover",
     ],
 }
 
@@ -284,12 +340,12 @@ _NEGATION = re.compile(
     re.IGNORECASE,
 )
 _YES_RE = re.compile(
-    r"\b(?:yes|included|opted|covered|available|selected|applicable|availed)\b",
+    r"\b(?:yes|included|opted|covered|available|selected|applicable|availed)\b|[✓✔☑]",
     re.IGNORECASE,
 )
 _NO_RE = re.compile(
     # "no\b(?!\s*[.\d])" — excludes "No. 1" (number) and "No." abbreviation
-    r"(?:\bno\b(?!\s*[.\d])|not\s+included|not\s+opted|not\s+covered|\bnil\b|\bexcluded\b|\bn/a\b|\bna\b|not\s+applicable)",
+    r"(?:\bno\b(?!\s*[.\d])|not\s+included|not\s+opted|not\s+covered|\bnil\b|\bexcluded\b|\bn/a\b|\bna\b|not\s+applicable)|[✗✘☐]",
     re.IGNORECASE,
 )
 
@@ -330,6 +386,70 @@ _ADDON_SIGNAL = re.compile(
     r"|guard|saver|benefit|replacement)\b",
     re.IGNORECASE,
 )
+
+
+# ─── OCR fallback ─────────────────────────────────────────────────────────────
+# Tesseract must be installed separately (see README). On Windows the default
+# install path is detected automatically; set TESSERACT_CMD env var to override.
+
+import os as _os
+import io as _io
+
+def _find_tesseract() -> str | None:
+    """Return the tesseract executable path, or None if not found."""
+    env = _os.environ.get("TESSERACT_CMD")
+    if env:
+        return env
+    # Common Windows install location
+    win_default = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+    if _os.path.isfile(win_default):
+        return win_default
+    return None  # rely on PATH
+
+
+_TESSERACT_CMD = _find_tesseract()
+
+
+def _ocr_pdf(path: str) -> tuple[str, list[str]]:
+    """
+    Render each page at 300 DPI with PyMuPDF and run Tesseract OCR on it.
+    Returns (full_text, lines) in the same shape as _pymupdf_lines.
+    """
+    try:
+        import pytesseract
+        from PIL import Image
+    except ImportError:
+        return "", []
+
+    if _TESSERACT_CMD:
+        pytesseract.pytesseract.tesseract_cmd = _TESSERACT_CMD
+
+    doc = fitz.open(path)
+    page_texts: list[str] = []
+    all_lines:  list[str] = []
+
+    for page in doc:
+        # 300 DPI gives good accuracy without being too slow
+        mat = fitz.Matrix(300 / 72, 300 / 72)
+        pix = page.get_pixmap(matrix=mat, colorspace=fitz.csGRAY)
+        img = Image.open(_io.BytesIO(pix.tobytes("png")))
+        raw = pytesseract.image_to_string(img, lang="eng",
+                                          config="--oem 3 --psm 6")
+        text = _normalize_text(raw)
+        page_texts.append(text)
+        all_lines.extend(ln.strip() for ln in text.splitlines() if ln.strip())
+
+    doc.close()
+    return "\n".join(page_texts), all_lines
+
+
+def _text_is_sparse(text: str, lines: list[str], num_pages: int) -> bool:
+    """True when the PDF yielded so little text it's likely image-based."""
+    if not text.strip():
+        return True
+    # Fewer than 15 meaningful words per page → treat as image-only
+    word_count = len(re.findall(r"\b[a-zA-Z]{3,}\b", text))
+    return word_count < max(15, num_pages * 15)
 
 
 # ─── PDF text extraction ──────────────────────────────────────────────────────
@@ -410,6 +530,41 @@ def _parse_number(s: str) -> float | None:
         return None
 
 
+_MONTH_MAP = {
+    'jan': '01', 'feb': '02', 'mar': '03', 'apr': '04',
+    'may': '05', 'jun': '06', 'jul': '07', 'aug': '08',
+    'sep': '09', 'oct': '10', 'nov': '11', 'dec': '12',
+}
+_MONTH_PAT = (
+    r"Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May"
+    r"|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?"
+    r"|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?"
+)
+_DATE_NUMERIC  = re.compile(r"\b(\d{1,2})[/\-](\d{1,2})[/\-](\d{2,4})\b")
+_DATE_WORD_MDY = re.compile(rf"\b({_MONTH_PAT})\s+(\d{{1,2}})[,\s]+(\d{{4}})\b", re.I)
+_DATE_WORD_DMY = re.compile(rf"\b(\d{{1,2}})\s+({_MONTH_PAT})[,.\s]+(\d{{4}})\b", re.I)
+
+
+def _parse_date_str(s: str) -> str | None:
+    """Return the first date found in *s* as DD/MM/YYYY, or None."""
+    m = _DATE_NUMERIC.search(s)
+    if m:
+        d, mo, y = m.groups()
+        y = "20" + y if len(y) == 2 else y
+        return f"{d.zfill(2)}/{mo.zfill(2)}/{y}"
+    m = _DATE_WORD_MDY.search(s)
+    if m:
+        month, d, y = m.groups()
+        mo = _MONTH_MAP.get(month[:3].lower(), "??")
+        return f"{d.zfill(2)}/{mo}/{y}"
+    m = _DATE_WORD_DMY.search(s)
+    if m:
+        d, month, y = m.groups()
+        mo = _MONTH_MAP.get(month[:3].lower(), "??")
+        return f"{d.zfill(2)}/{mo}/{y}"
+    return None
+
+
 # ─── KV dict from lines ───────────────────────────────────────────────────────
 
 def _build_kv(lines: list[str]) -> dict[str, str]:
@@ -473,6 +628,12 @@ def _detect_plan_coverage(text: str) -> str:
     t = text.lower()
     if re.search(r"\bcomprehensive\b|\bpackage\s+policy\b|\bod\s*\+\s*tp\b", t):
         return "Comprehensive (Own Damage + Third Party Liability)"
+    if re.search(
+        r"(?:four|two|two)\s+wheeler\s+package|private\s+car\s+package"
+        r"|motor\s+package|bundled\s+policy",
+        t,
+    ):
+        return "Comprehensive (Own Damage + Third Party Liability)"
     if re.search(r"own\s+damage\s+only|standalone\s+od|\bsaod\b", t):
         return "Own Damage Only"
     if re.search(r"third\s+party\s+only|tp\s+only|\bliability\s+only\b", t):
@@ -506,33 +667,32 @@ def _find_registration(full_text: str, kv: dict[str, str]) -> str:
 
 
 def _find_expiry(full_text: str, kv: dict[str, str], lines: list[str]) -> str:
-    DATE_RE = re.compile(r"\b(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})\b")
-
+    # Policy end dates searched before quote-validity dates to avoid returning
+    # the quote's validity window instead of the actual policy end date.
     val = _kv_lookup(kv,
         "policyexpirydate", "expirydate", "policyexpiringdate",
-        "equotevalidupto", "quotevalidtill", "validupto", "validtill",
-        "validuntil", "policyenddate", "dateofexpiry", "policyto",
-        "policyenddate", "renewaldate",
+        "policyenddate", "dateofexpiry", "policyto",
+        "equotevalidupto", "renewaldate",
+        "quotevalidtill", "validupto", "validtill", "validuntil",
     )
     if val:
-        m = DATE_RE.search(val)
-        if m:
-            return m.group(1)
+        d = _parse_date_str(val)
+        if d:
+            return d
 
     for line in lines:
         if re.search(r"policy\s+period|period\s+of\s+insurance|validity|expires", line, re.I):
-            dates = DATE_RE.findall(line)
-            if len(dates) >= 2:
-                return dates[-1]
-            if len(dates) == 1:
-                return dates[0]
+            d = _parse_date_str(line)
+            if d:
+                return d
+            # fall through to window search below
 
     for i, line in enumerate(lines):
-        if re.search(r"expir|valid\s+(?:till|upto|until)|end\s+date", line, re.I):
+        if re.search(r"expir|valid\s+(?:till|upto|until)|end\s+date|policy\s+end", line, re.I):
             snippet = " ".join(lines[i:i+3])
-            m = DATE_RE.search(snippet)
-            if m:
-                return m.group(1)
+            d = _parse_date_str(snippet)
+            if d:
+                return d
     return "N/A"
 
 
@@ -705,20 +865,34 @@ def extract_policy_data(path: str) -> dict:
     # onto one line, causing false Yes/No matches and wrong KV field values.
     lines = lines_py if lines_py else [l for l in plumber.splitlines() if l.strip()]
 
+    # ── OCR fallback for image-based PDFs ────────────────────────────────────
+    doc_tmp = fitz.open(path)
+    num_pages = doc_tmp.page_count
+    doc_tmp.close()
+
+    if _text_is_sparse(full_text, lines, num_pages):
+        ocr_text, ocr_lines = _ocr_pdf(path)
+        if ocr_text.strip():
+            full_text = ocr_text
+            lines     = ocr_lines
+
     if not full_text.strip():
-        raise ValueError("No text extracted — PDF may be scanned/image-only.")
+        raise ValueError("No text extracted — PDF may be scanned/image-only and Tesseract is not installed.")
 
     table_rows = _plumber_tables(path)
     kv = _build_kv(lines)
     for row in table_rows:
-        if len(row) >= 2:
-            label = _norm(row[0].rstrip(":"))
-            value = _clean(row[1])
+        # Process every adjacent pair of columns so 4-column layouts
+        # (col0=key, col1=val, col2=key, col3=val) are fully captured.
+        for j in range(0, len(row) - 1, 2):
+            label = _norm(row[j].rstrip(":"))
+            value = _clean(row[j + 1])
             if label and value:
                 kv.setdefault(label, value)
 
     # ── header fields ─────────────────────────────────────────────────────────
     vehicle_model = _kv_lookup(kv,
+        "manufacturemodel",                              # ICICI: "Manufacture Model"
         "makemodel", "makemodelvariant", "vehiclemodel", "makeofvehicle",
         "vehiclemakemodel", "modeldescription", "vehicledescription",
         "carmake", "carmodel", "make", "model", "vehicle",
@@ -781,18 +955,22 @@ def extract_policy_data(path: str) -> dict:
         search_window=10,   # look further ahead for table-format PDFs
     )
 
-    # ── Premium — prefer TOTAL (with GST) to match expected Excel values ──────
+    # ── Premium — prefer the RSA-inclusive final total (Tata AIG pattern) ───────
+    # Tata AIG PDFs show "TOTAL PREMIUM ₹X" then "Final Premium With Road Side
+    # Assistance ₹Y". We want Y (the actual amount paid), so check the most
+    # specific/final phrase first before falling back to bare "total premium".
     premium = _find_amount(lines, table_rows,
         primary_patterns=[
+            r"final\s+premium\s+with\s+road\s+side\s+assistance",  # Tata AIG
             r"total\s+premium\s+payable",
-            r"total\s+premium\b",
             r"final\s+premium\b",
             r"amount\s+payable\b",
+            r"total\s+premium\b",
         ],
         fallback_patterns=[
-            r"(?:gross|net)\s+premium(?!\s+payable)",
             r"net\s+premium\s+payable",
             r"total\s+amount\s+(?:due|payable)",
+            r"(?:gross|net)\s+premium(?!\s+payable)",
         ],
         min_value=1000,
     )
