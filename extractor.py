@@ -32,6 +32,7 @@ KNOWN_INSURERS = [
     ("Acko",                [r"\backo\b"]),
     ("Navi",                [r"navi\s+gen(?:eral)?"]),
     ("IndusInd",            [r"indusind", r"reliance\s+gen(?:eral)?"]),
+    ("Liberty General",     [r"liberty\s+gen(?:eral)?"]),
 ]
 
 
@@ -46,7 +47,8 @@ ADDON_TERMS: dict[str, list[str]] = {
     "Nil Depreciation": [
         # specific compound phrases first
         "zero dep shield", "zero dep plus", "unlimited zero dep",
-        "depreciation reimbursement", "depreciation waiver", "dep protection",
+        "depreciation reimbursement", "depreciation re-imbursement",
+        "depreciation waiver", "dep protection",
         "dep waiver", "dep shield", "depreciation cover", "depreciation protect",
         "zero depreciation", "nil depreciation", "nil dep", "zero dep",
         "bumper to bumper", "bumper 2 bumper",
@@ -54,8 +56,13 @@ ADDON_TERMS: dict[str, list[str]] = {
         "acc dep waiver", "accessory depreciation waiver",
         "zero dep claim", "zero depreciation claim", "depreciation claim",
         "100% depreciation cover", "full invoice value of parts",
-        "no depreciation cover", "complete cover plus",        # ICICI / generic marketing names
+        "no depreciation cover", "complete cover plus",
         "total protect cover",
+        "parts depreciation protect",                           # Go Digit
+        "waiver of reduction in depreciation",                  # Chola
+        "full depreciation waiver cover",                       # Chola
+        "nil depreciation cover",                               # Magma
+        "zero depreciation cover", "zero dep cover",            # Zuno / Acko / Navi
         # catch-all: any mention of depreciation in add-on context
         "depreciation",
     ],
@@ -64,23 +71,31 @@ ADDON_TERMS: dict[str, list[str]] = {
         "engine secure", "engine protector", "engine protect",
         "engine guard", "engine gaurd",                         # SBI spells it both ways
         "engine care", "engine cover",
+        "engine safe",                                           # Liberty General
         "engine and gearbox", "engine and gear box protect", "engine and gear box",
         "engine and gear-box protect", "engine & gear box protector",
         "engine & gearbox protect", "engine gearbox protect",
+        "engine and gear box protection",                        # IFFCO Tokio
         "gear box protect", "engine damage",
         "hydrostatic lock", "water ingress cover", "engine ingress",
-        "consequential engine damage", "engine restore",
+        "consequential engine damage", "consequential damage to engine",  # Magma
+        "engine restore",
         "undercarriage damage cover", "engine internal parts cover",
         "engine protect plus",                                  # ICICI
         "engine secure cover",                                  # TATA AIG
+        "engine protection",                                     # IndusInd
+        "aggravation",                                          # Royal Sundaram (aggravated/consequential loss)
     ],
 
     "Consumables Cover": [
         "consumable expenses protect", "consumables protection",
         "cover for consumables", "cost of consumable items",     # HDFC ERGO
+        "cost of consumables",                                   # Universal Sompo
         "consumable replacement", "consumable expenses",
         "consumables add on", "consumables",
-        "consumable cover", "consumables protect",
+        "consumable cover", "consumables cover",
+        "consumable items",                                      # ICICI Lombard
+        "consumables protect",
         "nuts bolts", "oil grease", "engine oil cover",
         "fluid replacement", "lubricant cover",
     ],
@@ -89,42 +104,67 @@ ADDON_TERMS: dict[str, list[str]] = {
         "24x7 spot assistance", "spot assistance", "on spot assistance",
         "road side assistance", "roadside assistance", "road assist",
         "basic road assistance", "basic road assist",            # SBI phrasing
+        "basic road-side assistance",                            # SBI alternate
         "car breakdown assistance", "car breakdown cover",       # GoDigit phrasing
-        "emergency road service", "breakdown assistance", "breakdown assist",
+        "breakdown assistance", "breakdown cover",
+        "roadside assistance cover",                             # Universal Sompo
+        "roadside assistance plus",                              # Zuno
+        "outstation emergency cover",                            # Acko
+        "coverage for disabled vehicle",                         # Chola
+        "additional towing charges", "additional towing",        # Oriental / Magma / New India
+        "emergency road service", "breakdown assist",
         "breakdown rescue", "towing assistance", "towing service",
         "on call assistance", "flat tyre support", "battery jumpstart",
         "fuel delivery", "emergency mobility", "on road assistance",
         "breakdown support", "emergency assistance cover",       # HDFC ERGO
+        "smart save pro",                                        # Royal Sundaram RSA bundle
         # generic RSA abbreviation — word-bounded so doesn't match "persona"
         "rsa",
     ],
 
     "Return To Invoice": [
         # Keep specific to avoid matching stray "invoice" mentions
-        "return to invoice",
-        "invoice protection", "invoice return cover",
+        "return to invoice", "return-to-invoice",
+        "invoice protection", "invoice return cover", "invoice return",  # Shriram
         "invoice value guarantee", "invoice shield", "invoice gap cover",
         "invoice price protection", "full invoice cover",
+        "invoice cover",                                         # Acko
         "new vehicle replacement cover", "replacement cost cover",
-        "purchase price protection", "vehicle replacement value plus",  # Royal Sundaram
+        "purchase price protection", "vehicle replacement value plus",
+        "vehicle replacement value",                             # Royal Sundaram
+        "gap value",                                             # Liberty General
+        "reinstatement value basis",                             # Chola
+        "coverage of insurance cost",                            # Chola
         "rpi",                                                   # Iffco Tokio abbreviation
         "rti cover", "rti",
     ],
 
     "Tyre Protection": [
         "tyre secure", "tyre protect", "tyre protection",
-        "tyre damage cover", "tyre cover", "tyre care",
+        "tyre damage cover", "tyre damage",                      # Future Generali
+        "tyre cover", "tyre care",
+        "tyre replacement",                                      # IFFCO Tokio
+        "tyre guard",                                            # Magma
+        "tyre and alloy cover",                                  # Magma
+        "tyre and rim secure", "tyre and rim protect",           # SBI / Oriental
+        "car tyre protection",                                   # IndusInd
         "tire protect", "tire cover",
-        "rim protector", "rim damage cover",
+        "rim protector", "rim damage cover", "rim secure",       # Tata AIG
+        "rim safeguard", "rim protection",                       # Magma / IndusInd
         "alloy wheel cover", "tyre burst",
         "tyre secure cover",                                     # TATA AIG
     ],
 
     "Emergency Transport & Hotel": [
-        "emergency transport and hotel", "transport and hotel",
-        "emergency hotel expenses", "alternate accommodation",
+        "emergency transport & hotel expenses",                  # Tata AIG (with ampersand)
+        "emergency transport and hotel expenses",                # Tata AIG (spelled out)
+        "emergency transport & hotel", "emergency transport and hotel",
+        "transport and hotel",
+        "emergency transport and hotel expenses reimbursement",  # New India
+        "emergency hotel expenses", "emergency hotel accommodation",  # IndusInd
+        "alternate accommodation",
         "emergency travel assistance", "hotel stay expenses",
-        "hotel expenses", "emergency transport",
+        "hotel expenses", "emergency transport", "emergency transportation",
         "higher protection and removal costs",                   # HDFC ERGO
         "removal of debris", "debris removal cover",
     ],
@@ -132,11 +172,18 @@ ADDON_TERMS: dict[str, list[str]] = {
     "Personal Belongings Cover": [
         "personal baggage cover", "personal belongings protect",
         "personal belongings cover", "personal effects cover",
+        "personal effects",                                      # Oriental Insurance
         "personal items cover", "loss of personal belongings",
+        "loss to personal belongings",                           # Go Digit
         "loss of personal", "belongings cover",
+        "smart baggage",                                         # Royal Sundaram
+        "loss of baggage",                                       # Royal Sundaram
+        "personal belongings",                                   # Shriram / generic
+        "personal belongings - damage", "personal belongings theft",  # Acko
         "laptop cover", "mobile cover", "baggage cover",
-        "item protection", "cabin contents",
         "loss of baggage cover", "personal baggage",
+        "item protection", "cabin contents",
+        "personal belongings including electronic equipment",    # Acko
     ],
 
     "Key Replacement": [
@@ -145,6 +192,13 @@ ADDON_TERMS: dict[str, list[str]] = {
         "lock and key replacement", "key replacement",
         "key protect", "key loss cover", "key care",
         "key replacement cover",
+        "key loss",                                              # Liberty General
+        "cover for key replacements",                            # SBI General
+        "key replacement clause",                                # Universal Sompo
+        "theft or loss of keys",                                 # Future Generali
+        "loss of key cover",                                     # IFFCO Tokio
+        "key & lock protect",                                    # Go Digit (ampersand variant)
+        "duplicate vehicle key",                                 # Chola
         "smart key cover", "smart key protection",
         "key loss assistance", "lost key cover", "key fob cover",
         "key and lock cover", "lockset replacement",
@@ -152,6 +206,9 @@ ADDON_TERMS: dict[str, list[str]] = {
 
     "Emergency Medical Expenses": [
         "emergency medical expenses", "medical expense cover",
+        "medical expense extension",                             # Magma
+        "emergency medical assistance",                          # Universal Sompo
+        "passenger assist",                                      # Liberty General
         "hospitalisation expense", "hospital cash",
         "ambulance charges", "accidental hospitalisation",
         "emergency medical",
@@ -177,6 +234,8 @@ ADDON_TERMS: dict[str, list[str]] = {
 
     "Personal Accident (Owner Driver)": [
         # Most specific first
+        "additional personal accident cover",                    # Magma
+        "enhanced personal accident",                            # Royal Sundaram
         "compulsory pa cover for owner driver",
         "compulsory pa for owner driver",
         "compulsory pa cover owner driver",
@@ -216,11 +275,13 @@ ADDON_TERMS: dict[str, list[str]] = {
         "ncb saver", "bonus protection", "bonus protect",
         "bonus retention", "claim shield", "ncb guard",
         "bonus lock", "ncb protector cover",
+        "protection of ncb",                                     # Magma
+        "ncb retention",                                         # IndusInd
     ],
 
     "IMT 25 (CNG/LPG)": [
         "imt 25", "imt25", "cng kit", "lpg kit",
-        "cng/lpg", "cng lpg", "bi-fuel kit", "cng cover",
+        "cng/lpg", "cng lpg", "bi-fuel kit", "bi fuel kit", "cng cover",
     ],
 
     # ── extended add-ons (shown if found in any policy) ───────────────────────
@@ -231,13 +292,15 @@ ADDON_TERMS: dict[str, list[str]] = {
         "co-passenger cover", "co passenger cover",
         "unnamed passenger cover", "named passenger cover",
         "occupant injury cover", "family passenger cover",
-        "additional personal accident",                          # HDFC ERGO
-        "enhanced pa cover",                                      # IMT 47 marketing name
+        "additional personal accident",                          # HDFC ERGO / Magma
+        "enhanced personal accident",                            # Royal Sundaram
+        "enhanced pa cover",
         "accident shield",                                        # Go Digit PA top-up bundle
     ],
 
     "Glass Cover": [
-        "windshield cover", "glass damage cover", "glass protection",
+        "windshield cover", "windshield glass",                  # Royal Sundaram
+        "glass damage cover", "glass protection",
         "glass secure", "glass rubber plastic",
         "windscreen protection", "mirror cover",
         "window glass cover", "sunroof cover", "glass cover",
@@ -246,6 +309,13 @@ ADDON_TERMS: dict[str, list[str]] = {
 
     "Daily Allowance": [
         "daily cash allowance", "daily allowance",
+        "daily allowance benefit",                               # IndusInd
+        "daily cash allowance benefit",                          # Universal Sompo
+        "daily expense reimbursement",                           # Shriram
+        "inconvenience allowance",                               # SBI / Future Generali
+        "inconvenience cover",                                   # Magma
+        "loss of income cover",                                  # Chola
+        "conveyance allowance",                                  # Chola
         "alternate transport", "travel assistance",
         "taxi reimbursement", "emergency taxi",
         "daily commute allowance",
@@ -258,13 +328,17 @@ ADDON_TERMS: dict[str, list[str]] = {
     "Car Replacement": [
         "replacement vehicle", "courtesy car",
         "substitute vehicle", "car replacement",
+        "spare car",                                             # Royal Sundaram
+        "vehicle replacement edge",                              # SBI General
+        "alternative car benefit",                               # National Insurance
         "hire car cover",                                         # TATA AIG
         "vehicle replacement advantage",                          # Go Digit top-up cover
         "standby vehicle",
     ],
 
     "Electrical Accessories": [
-        "electrical accessories cover", "electronic accessories cover",
+        "electrical accessories cover", "electrical accessories",
+        "electronic accessories cover",
         "music system cover", "audio system cover",
         "electronic device cover",
     ],
@@ -277,8 +351,13 @@ ADDON_TERMS: dict[str, list[str]] = {
         "ev battery cover", "battery secure", "battery protection",
         "charger cover", "charging equipment cover",
         "ev secure", "battery replacement cover", "cable cover",
-        "hybrid electric car shield", "ev shield",               # Royal Sundaram / Go Digit
-        "electric surge secure",                                  # TATA AIG (EV add-on)
+        "hybrid electric car shield", "ev shield",               # Royal Sundaram
+        "ev protect cover",                                      # Royal Sundaram
+        "electric surge secure",                                  # TATA AIG
+        "battery convenience",                                   # TATA AIG
+        "battery protect", "battery protect cover",              # ICICI / Universal Sompo
+        "battery guard",                                         # SBI General
+        "battery cover",                                         # Magma
         "battery degradation cover", "drive motor cover",
         "ev roadside assistance", "charging point cover",
     ],
@@ -292,10 +371,35 @@ ADDON_TERMS: dict[str, list[str]] = {
     "Smart Assistance": [
         "il smart assist", "smart assist", "smart saver plus",
         "smart save pro",                                        # Royal Sundaram
+        "liberty complete assistance",                           # Liberty General bundle
     ],
 
     "IMT 47": [
         "imt 47", "imt47", "enhanced pa cover",
+    ],
+
+    "Power Surge": [
+        "hybrid electric car shield",                            # Royal Sundaram
+        "ev protect cover",                                      # Royal Sundaram
+        "electric surge secure",                                  # TATA AIG
+        "power surge cover", "surge protection",
+    ],
+
+    "Rim Protection": [
+        "rim secure",                                            # TATA AIG
+        "rim safeguard",                                         # Magma
+        "rim protection",                                        # IndusInd
+        "rim damage", "alloy rim cover",
+        "tyre and rim secure",                                   # SBI / Universal Sompo
+        "tyre and rim protect",                                  # Oriental
+        "tyre and alloy cover",                                  # Magma
+    ],
+
+    "Passenger PA Cover for Paid Driver": [
+        "pa cover for paid driver",                              # Liberty General
+        "pa to paid driver", "pa for paid driver",
+        "personal accident for paid driver",
+        "personal accident to paid driver",
     ],
 
     "Voluntary Deductible": [
