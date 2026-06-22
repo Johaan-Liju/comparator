@@ -51,7 +51,7 @@ ADDON_TERMS: dict[str, list[str]] = {
         "depreciation waiver", "dep protection",
         "dep waiver", "dep shield", "depreciation cover", "depreciation protect",
         "zero depreciation", "nil depreciation", "nil dep", "zero dep",
-        "bumper to bumper", "bumper 2 bumper",
+        "bumper to bumper", "bumper-to-bumper", "bumper 2 bumper",
         "zero wear and tear",
         "acc dep waiver", "accessory depreciation waiver",
         "zero dep claim", "zero depreciation claim", "depreciation claim",
@@ -212,6 +212,7 @@ ADDON_TERMS: dict[str, list[str]] = {
         "hospitalisation expense", "hospital cash",
         "ambulance charges", "accidental hospitalisation",
         "emergency medical",
+        "eme cover",                                             # ICICI abbreviation
     ],
 
     "Legal Liability to Paid Driver": [
@@ -245,6 +246,7 @@ ADDON_TERMS: dict[str, list[str]] = {
         "compulsory personal accident cover",
         "cpa cover",
         "pa cover for owner driver",
+        "pa cover for owner",                 # ICICI OCR splits "Driver" to next line
         "pa cover owner driver",
         "pa cover owner",                     # ICICI: "PA Cover - Owner Driver"
         "pa owner driver",
@@ -369,7 +371,6 @@ ADDON_TERMS: dict[str, list[str]] = {
     ],
 
     "Smart Assistance": [
-        "il smart assist", "smart assist", "smart saver plus",
         "smart save pro",                                        # Royal Sundaram
         "liberty complete assistance",                           # Liberty General bundle
     ],
@@ -452,19 +453,44 @@ _NO_RE = re.compile(
 )
 
 
+def _expand_term_variants(t: str) -> list[str]:
+    """
+    For a single term, return it plus automatic & ↔ and and hyphen ↔ space
+    variants so we never miss a match due to punctuation differences between
+    insurers (e.g. 'Engine & Gear Box' vs 'Engine and Gear Box').
+    """
+    variants = {t}
+    if " & " in t:
+        variants.add(t.replace(" & ", " and "))
+    if " and " in t:
+        variants.add(t.replace(" and ", " & "))
+    # hyphen ↔ space (e.g. 'bumper-to-bumper' ↔ 'bumper to bumper')
+    if "-" in t:
+        variants.add(t.replace("-", " "))
+    # also apply & ↔ and on any newly added variants
+    for v in list(variants):
+        if " & " in v:
+            variants.add(v.replace(" & ", " and "))
+        if " and " in v:
+            variants.add(v.replace(" and ", " & "))
+    return list(variants)
+
+
 def _terms_to_pattern(terms: list[str]) -> re.Pattern:
     """
     Convert plain-English terms to a single regex.
-    Each term gets word-boundaries so 'rti' never matches inside 'Vertical'.
+    Auto-expands & ↔ and and hyphen ↔ space variants for every term so that
+    punctuation differences between insurers never cause a missed match.
     """
-    parts = []
+    all_terms: list[str] = []
     for t in terms:
-        # escape then loosen spaces/hyphens, and wrap in word boundaries
-        escaped = re.escape(t.strip())
-        escaped = re.sub(r"\\ ", r"[\\s\\-­]*", escaped)  # allow soft-hyphens too
-        # wrap in word boundary only if term starts/ends with word chars
-        left  = r"\b" if re.match(r"\w", t[0])  else ""
-        right = r"\b" if re.match(r"\w", t[-1]) else ""
+        all_terms.extend(_expand_term_variants(t.strip()))
+
+    parts = []
+    for t in all_terms:
+        escaped = re.escape(t)
+        left  = r"\b" if t and re.match(r"\w", t[0])  else ""
+        right = r"\b" if t and re.match(r"\w", t[-1]) else ""
         parts.append(left + escaped + right)
     parts.sort(key=len, reverse=True)  # longest/most-specific first
     return re.compile(r"(?:" + "|".join(parts) + r")", re.IGNORECASE)
@@ -876,7 +902,13 @@ def _isolate_addon_section(full_text: str) -> str:
         return ""
     end_m = _SECTION_END.search(full_text, m.end())
     end = end_m.start() if end_m else min(m.start() + 5000, len(full_text))
-    return full_text[m.start():end]
+    section = full_text[m.start():end]
+    # If the section start fired on a summary line (e.g. "Total Premium with Addon")
+    # rather than a real add-on header, the captured section will be tiny. Fall back
+    # to full text so add-on items before the spurious match are still scanned.
+    if len(section) < 300:
+        return ""
+    return section
 
 
 # ─── Bajaj plan-name → add-on mapping ────────────────────────────────────────
@@ -962,12 +994,22 @@ def _apply_bajaj_plan_addons(plan_name: str, full_text: str, addons: dict[str, s
                 addons[addon] = "Yes"
             break
 
-    # Parse individually numbered top-up cover lines
-    for line in full_text.splitlines():
-        m = _BAJAJ_TOPUP_LINE.match(line.strip())
-        if not m:
+    # Parse top-up cover lines — content may be inline OR on the next line:
+    #   "Top up Cover 1: Consumables Expenses"  (inline)
+    #   "Top up Cover 1:\nConsumables Expenses" (next line — Bajaj PDF layout)
+    _topup_header = re.compile(r"top[\s\-]*up\s+cover\s*\d*\s*[:.]\s*$", re.I)
+    text_lines = full_text.splitlines()
+    for i, line in enumerate(text_lines):
+        stripped = line.strip()
+        # Inline: "Top up Cover N: <content>"
+        m = _BAJAJ_TOPUP_LINE.match(stripped)
+        if m:
+            cover_text = m.group(1).lower()
+        # Next-line: "Top up Cover N:" followed by content on next line
+        elif _topup_header.match(stripped) and i + 1 < len(text_lines):
+            cover_text = text_lines[i + 1].strip().lower()
+        else:
             continue
-        cover_text = m.group(1).lower()
         for fragment, addon in _BAJAJ_TOPUP_MAP:
             if fragment in cover_text:
                 addons[addon] = "Yes"
@@ -1180,6 +1222,15 @@ def extract_policy_data(path: str) -> dict:
     # reset to No, then re-derive from Plan Name + top-up cover lines only.
     if insurer == "Bajaj Allianz":
         plan_name = _kv_lookup(kv, "planname", "plan") or ""
+        if not plan_name:
+            # Bajaj uses "Plan Name**" (no colon) so the KV builder misses it.
+            # Scan lines directly: find "Plan Name..." then take the next line.
+            for _i, _line in enumerate(lines):
+                if re.search(r"plan\s*name", _line.strip(), re.I) and _i + 1 < len(lines):
+                    _candidate = lines[_i + 1].strip().rstrip(",").strip()
+                    if _candidate:
+                        plan_name = _candidate
+                        break
         plan_name_clean = re.sub(r"[^a-z0-9\s]", "", plan_name.lower()).strip()
         for k in addons:
             addons[k] = "No"
