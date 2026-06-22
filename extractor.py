@@ -95,8 +95,6 @@ ADDON_TERMS: dict[str, list[str]] = {
         "on call assistance", "flat tyre support", "battery jumpstart",
         "fuel delivery", "emergency mobility", "on road assistance",
         "breakdown support", "emergency assistance cover",       # HDFC ERGO
-        "il smart assist", "smart assist", "smart saver plus",
-        "smart save pro",                                        # Royal Sundaram
         # generic RSA abbreviation — word-bounded so doesn't match "persona"
         "rsa",
     ],
@@ -777,6 +775,101 @@ def _isolate_addon_section(full_text: str) -> str:
     return full_text[m.start():end]
 
 
+# ─── Bajaj plan-name → add-on mapping ────────────────────────────────────────
+# Bajaj bundles add-ons into named packages. When a Plan Name is present we can
+# infer the exact add-on set without relying on keyword scanning (which would
+# fire on the full package catalogue printed in every Bajaj quote).
+# List is sorted longest-first so "daw+" is always tested before "daw".
+
+_BAJAJ_PLAN_ADDONS: list[tuple[str, list[str]]] = sorted([
+    ("eco assure repair protection", [
+        "Road Side Assistance", "Engine Protection", "EV Battery Protection",
+        "Consumables Cover", "Key Replacement", "Personal Belongings Cover",
+    ]),
+    ("drive assure drivesmart prestige", [
+        "Road Side Assistance", "Nil Depreciation", "Engine Protection",
+        "Daily Allowance", "Passenger PA Cover",
+        "Key Replacement", "Personal Belongings Cover", "Consumables Cover",
+    ]),
+    ("drive assure drivesmart premium", [
+        "Road Side Assistance", "Nil Depreciation", "Engine Protection",
+        "Passenger PA Cover", "Key Replacement", "Personal Belongings Cover",
+    ]),
+    ("drive assure drivesmart classic", [
+        "Road Side Assistance", "Passenger PA Cover",
+        "Key Replacement", "Personal Belongings Cover",
+    ]),
+    ("drive assure economy plus", [
+        "Road Side Assistance", "Nil Depreciation", "Engine Protection",
+        "Key Replacement", "Personal Belongings Cover",
+    ]),
+    ("drive assure welcome plus", [
+        "Road Side Assistance", "Nil Depreciation",
+        "Key Replacement", "Personal Belongings Cover",
+    ]),
+    ("drive assure prime plus", [
+        "Road Side Assistance", "Key Replacement", "Personal Belongings Cover",
+    ]),
+    ("drive assure economy", [
+        "Road Side Assistance", "Nil Depreciation", "Engine Protection",
+    ]),
+    ("drive assure welcome", [
+        "Road Side Assistance", "Nil Depreciation",
+    ]),
+    ("dae+", [
+        "Road Side Assistance", "Nil Depreciation", "Engine Protection",
+        "Key Replacement", "Personal Belongings Cover",
+    ]),
+    ("daw+", [
+        "Road Side Assistance", "Nil Depreciation",
+        "Key Replacement", "Personal Belongings Cover",
+    ]),
+    ("dae", ["Road Side Assistance", "Nil Depreciation", "Engine Protection"]),
+    ("daw", ["Road Side Assistance", "Nil Depreciation"]),
+], key=lambda x: len(x[0]), reverse=True)
+
+# Top-up cover text fragment → canonical add-on key
+_BAJAJ_TOPUP_MAP: list[tuple[str, str]] = [
+    ("consumable",          "Consumables Cover"),
+    ("vehicle replacement", "Car Replacement"),
+    ("conveyance",          "Daily Allowance"),
+    ("accident shield",     "Passenger PA Cover"),
+    ("depreciation",        "Nil Depreciation"),
+    ("engine",              "Engine Protection"),
+    ("tyre",                "Tyre Protection"),
+    ("ncb",                 "NCB Protection"),
+    ("return to invoice",   "Return To Invoice"),
+    ("rpi",                 "Return To Invoice"),
+    ("key",                 "Key Replacement"),
+]
+
+_BAJAJ_TOPUP_LINE = re.compile(
+    r"top[\s\-]*up\s+cover\s*\d*\s*[:.]?\s*(.+)", re.IGNORECASE
+)
+
+
+def _apply_bajaj_plan_addons(plan_name: str, full_text: str, addons: dict[str, str]) -> None:
+    """Set add-ons to Yes based on Bajaj plan name + any selected top-up covers."""
+    plan_lower = plan_name.lower().strip()
+
+    for key, addon_list in _BAJAJ_PLAN_ADDONS:
+        if key in plan_lower:
+            for addon in addon_list:
+                addons[addon] = "Yes"
+            break
+
+    # Parse individually numbered top-up cover lines
+    for line in full_text.splitlines():
+        m = _BAJAJ_TOPUP_LINE.match(line.strip())
+        if not m:
+            continue
+        cover_text = m.group(1).lower()
+        for fragment, addon in _BAJAJ_TOPUP_MAP:
+            if fragment in cover_text:
+                addons[addon] = "Yes"
+                break
+
+
 # ─── add-on detection ─────────────────────────────────────────────────────────
 
 def _detect_addons(
@@ -976,6 +1069,18 @@ def extract_policy_data(path: str) -> dict:
     )
 
     addons, extras = _detect_addons(full_text, lines, table_rows)
+
+    # ── Bajaj plan-based add-on resolution ───────────────────────────────────
+    # Bajaj quotes print every available package in the add-on section, so the
+    # keyword scanner marks everything as Yes. We override that completely:
+    # reset to No, then re-derive from Plan Name + top-up cover lines only.
+    if insurer == "Bajaj Allianz":
+        plan_name = _kv_lookup(kv, "planname", "plan") or ""
+        plan_name_clean = re.sub(r"[^a-z0-9\s]", "", plan_name.lower()).strip()
+        for k in addons:
+            addons[k] = "No"
+        if plan_name_clean:
+            _apply_bajaj_plan_addons(plan_name, full_text, addons)
 
     return {
         "product":               "Motor Insurance",
