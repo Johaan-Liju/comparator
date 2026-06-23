@@ -14,7 +14,7 @@ import fitz  # PyMuPDF
 KNOWN_INSURERS = [
     ("TATA AIG",            [r"tata\s*aig"]),
     ("HDFC ERGO",           [r"hdfc\s*ergo"]),
-    ("ICICI Lombard",       [r"icici\s*lombard", r"icici\s+general"]),
+    ("ICICI Lombard",       [r"icici\s*lombard", r"icici\s+general", r"icici.{0,6}ombard", r"icic.{0,8}ombard"]),
     ("SBI General",         [r"sbi\s+gen(?:eral)?"]),
     ("Bajaj Allianz",       [r"bajaj\s*allianz", r"bajaj\s+general"]),
     ("New India Assurance", [r"new\s+india"]),
@@ -31,7 +31,8 @@ KNOWN_INSURERS = [
     ("Zuno",                [r"\bzuno\b"]),
     ("Acko",                [r"\backo\b"]),
     ("Navi",                [r"navi\s+gen(?:eral)?"]),
-    ("IndusInd",            [r"indusind", r"reliance\s+gen(?:eral)?"]),
+    ("Reliance General",    [r"reliance\s+gen(?:eral)?", r"reliance\s+nippon", r"reliance"]),
+    ("IndusInd",            [r"indusind"]),
     ("Liberty General",     [r"liberty\s+gen(?:eral)?"]),
 ]
 
@@ -51,7 +52,7 @@ ADDON_TERMS: dict[str, list[str]] = {
         "depreciation waiver", "dep protection",
         "dep waiver", "dep shield", "depreciation cover", "depreciation protect",
         "zero depreciation", "nil depreciation", "nil dep", "zero dep",
-        "bumper to bumper", "bumper-to-bumper", "bumper 2 bumper",
+        "bumper to bumper", "bumper-to-bumper", "bumper 2 bumper", "b2b",
         "zero wear and tear",
         "acc dep waiver", "accessory depreciation waiver",
         "zero dep claim", "zero depreciation claim", "depreciation claim",
@@ -70,7 +71,7 @@ ADDON_TERMS: dict[str, list[str]] = {
     "Engine Protection": [
         "engine secure", "engine protector", "engine protect",
         "engine guard", "engine gaurd",                         # SBI spells it both ways
-        "engine care", "engine cover",
+        "engine care", "engine cover", "engine covef",  # "covef" = OCR typo for "cover" (Bajaj policy scan)
         "engine safe",                                           # Liberty General
         "engine and gearbox", "engine and gear box protect", "engine and gear box",
         "engine and gear-box protect", "engine & gear box protector",
@@ -106,6 +107,7 @@ ADDON_TERMS: dict[str, list[str]] = {
         "basic road assistance", "basic road assist",            # SBI phrasing
         "basic road-side assistance",                            # SBI alternate
         "car breakdown assistance", "car breakdown cover",       # GoDigit phrasing
+        "car breakdown",                                         # GoDigit splits "Breakdown\nAssistance" across lines
         "breakdown assistance", "breakdown cover",
         "roadside assistance cover",                             # Universal Sompo
         "roadside assistance plus",                              # Zuno
@@ -283,7 +285,9 @@ ADDON_TERMS: dict[str, list[str]] = {
 
     "IMT 25 (CNG/LPG)": [
         "imt 25", "imt25", "cng kit", "lpg kit",
-        "cng/lpg", "cng lpg", "bi-fuel kit", "bi fuel kit", "cng cover",
+        "bi-fuel kit", "bi fuel kit", "cng cover",
+        # "cng/lpg" and "cng lpg" removed — too generic, appears in premium table
+        # headers of many PDFs regardless of whether CNG kit is actually opted
     ],
 
     # ── extended add-ons (shown if found in any policy) ───────────────────────
@@ -393,7 +397,6 @@ ADDON_TERMS: dict[str, list[str]] = {
         "rim damage", "alloy rim cover",
         "tyre and rim secure",                                   # SBI / Universal Sompo
         "tyre and rim protect",                                  # Oriental
-        "tyre and alloy cover",                                  # Magma
     ],
 
     "Passenger PA Cover for Paid Driver": [
@@ -569,6 +572,41 @@ def _ocr_pdf(path: str) -> tuple[str, list[str]]:
 
     doc.close()
     return "\n".join(page_texts), all_lines
+
+
+def _ocr_image(path: str) -> tuple[str, list[str]]:
+    """Run Tesseract OCR on a plain image file (PNG, JPG, etc.)."""
+    try:
+        import pytesseract
+        from PIL import Image, ImageEnhance
+    except ImportError:
+        return "", []
+    if _TESSERACT_CMD:
+        pytesseract.pytesseract.tesseract_cmd = _TESSERACT_CMD
+
+    def _run_ocr(img):
+        raw = pytesseract.image_to_string(img, lang="eng", config="--oem 3 --psm 3")
+        return _normalize_text(raw)
+
+    try:
+        img = Image.open(path).convert("RGB")
+        # Scale up so Tesseract has enough resolution (target ~300 DPI equivalent)
+        w, h = img.size
+        if max(w, h) < 2000:
+            scale = max(2, 2000 // max(w, h))
+            img = img.resize((w * scale, h * scale), Image.LANCZOS)
+        # Greyscale + mild contrast boost
+        gray = img.convert("L")
+        gray = ImageEnhance.Contrast(gray).enhance(2.0)
+        text = _run_ocr(gray)
+        if len(text.split()) < 5:
+            # Fallback: binarize with threshold
+            bw = gray.point(lambda p: 255 if p > 128 else 0, "1")
+            text = _run_ocr(bw)
+        lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+        return text, lines
+    except Exception:
+        return "", []
 
 
 def _text_is_sparse(text: str, lines: list[str], num_pages: int) -> bool:
@@ -848,9 +886,17 @@ def _find_amount(
         for pat in pat_list:
             compiled = re.compile(pat, re.I)
             for i, line in enumerate(lines):
-                if compiled.search(line):
-                    # wider window for multi-column table layouts
-                    snippet = " ".join(lines[i:i+search_window])
+                m = compiled.search(line)
+                if m:
+                    # Search text AFTER the match first (avoids picking up
+                    # numbers that appear before the label on the same line,
+                    # e.g. "Net Premium 75442 Total Premium 89022")
+                    after = line[m.end():]
+                    after_nums = _nums(after)
+                    if after_nums:
+                        return after_nums[0]
+                    # Fallback: wider window including subsequent lines
+                    snippet = " ".join(lines[i+1:i+search_window])
                     nums = _nums(snippet)
                     if nums:
                         return nums[0]
@@ -891,7 +937,9 @@ _SECTION_START = re.compile(
 _SECTION_END = re.compile(
     r"(?:terms\s+and\s+conditions|signature|declaration|claim\s+procedure|"
     r"policy\s+wording|general\s+exclusion|important\s+notice|"
-    r"important\s+note|note\s*:|disclaimer)",
+    r"important\s+note|note\s*:|disclaimer|"
+    r"for\s+quote\s+purposes\s+only|"
+    r"all\s+about\s+your\s+money)",     # Go Digit — ends section before premium table
     re.IGNORECASE,
 )
 
@@ -1091,34 +1139,203 @@ def _detect_addons(
     return results, extras
 
 
+# ─── Royal Sundaram multi-plan resolver ──────────────────────────────────────
+# RS comparison quotes list Plan A / B / C as side-by-side columns. The add-on
+# names are all bundled into one multi-line table cell; subsequent empty-label
+# rows carry the per-plan values.  We detect the selected plan, find its column,
+# and use the column values to decide which add-ons are active.
+
+_RS_ADDON_NAMES: list[tuple[str, str]] = [
+    (r"depreciation\s*waiver",              "Nil Depreciation"),
+    (r"windshield\s*glass",                  "Glass Cover"),
+    (r"facilities\s*in\s*lieu\s*of\s*spare", "Car Replacement"),
+    (r"full\s*invoice\s*price",              "Return To Invoice"),
+    (r"loss\s*of\s*baggage",                 "Personal Belongings Cover"),
+    (r"ncb\s*protector",                     "NCB Protection"),
+    (r"aggravation\s*cover",                 "Engine Protection"),
+    (r"key\s*replacement",                   "Key Replacement"),
+    (r"tyre\s*cover",                        "Tyre Protection"),
+    (r"roadside\s*assistance",               "Road Side Assistance"),
+    (r"smart\s*save\s*pro",                  "Smart Assistance"),
+    (r"hybrid\s*electric\s*car\s*shield",    "EV Battery Protection"),
+    (r"consumables",                         "Consumables Cover"),
+    (r"smart\s*use",                         None),   # pay-as-you-drive; ignore
+]
+
+
+def _rs_resolve_plan(
+    lines: list[str],
+    table_rows: list[list[str]],
+    addons: dict[str, str],
+) -> float | None:
+    """
+    Detect the selected Royal Sundaram plan (A/B/C), find its column in the
+    premium table, mark add-ons accordingly.  Returns the selected plan's total
+    premium (float) if found, else None (caller keeps existing premium value).
+    """
+    # 1. Detect selected plan from consecutive lines "Plan" → "Plan C"
+    selected_plan: str | None = None
+    for i, line in enumerate(lines):
+        if re.search(r"^plan$", line.strip(), re.I) and i + 1 < len(lines):
+            m = re.match(r"plan\s+([abc])\b", lines[i + 1].strip(), re.I)
+            if m:
+                selected_plan = m.group(1).upper()
+                break
+
+    if not selected_plan:
+        return None
+
+    # 2. Find the column index for the selected plan in the header row
+    #    Header looks like: [..., 'PlanA', ..., 'PlanB', ..., 'PlanC\n(Recommended)']
+    plan_col: int | None = None
+    for row in table_rows:
+        for ci, cell in enumerate(row):
+            cell_norm = re.sub(r"\s+", "", cell).upper()
+            if re.match(rf"PLAN{selected_plan}\b", cell_norm):
+                plan_col = ci
+                break
+        if plan_col is not None:
+            break
+
+    if plan_col is None:
+        return None
+
+    def _cell_val(row: list[str], col: int) -> float:
+        if col < len(row):
+            raw = re.sub(r"[^\d.]", "", row[col].replace(",", ""))
+            try:
+                v = float(raw)
+                return v if v > 0 else 0.0
+            except ValueError:
+                return 0.0
+        return 0.0
+
+    # 3. Find the big multi-line add-on names row (contains "depreciation waiver")
+    addon_row_idx: int | None = None
+    for ri, row in enumerate(table_rows):
+        if row and re.search(r"depreciation\s*waiver", row[0], re.I):
+            addon_row_idx = ri
+            break
+
+    # 4. Reset all add-ons, then set from selected plan column
+    for k in addons:
+        addons[k] = "No"
+
+    if addon_row_idx is not None:
+        big_row = table_rows[addon_row_idx]
+        addon_name_lines = [ln for ln in big_row[0].split("\n") if ln.strip()]
+
+        # Values: item 1 is in big_row itself; items 2-N are in the next rows
+        value_rows = [big_row]
+        ri = addon_row_idx + 1
+        while ri < len(table_rows):
+            r = table_rows[ri]
+            # Stop at rows that have label text (section totals, liability header)
+            if r[0].strip():
+                break
+            value_rows.append(r)
+            ri += 1
+
+        for idx, name_cell in enumerate(addon_name_lines):
+            if idx >= len(value_rows):
+                break
+            val = _cell_val(value_rows[idx], plan_col)
+            if val > 0:
+                for term_re, addon_key in _RS_ADDON_NAMES:
+                    if addon_key and re.search(term_re, name_cell, re.I):
+                        addons[addon_key] = "Yes"
+                        break
+
+    # 5. PA Cover for Owner Driver — in the liability block
+    #    Header cell contains "Under Section III (Owner Driver)"; it's the 2nd
+    #    value row after the "Personal Accident Benefits" header row.
+    pa_header_idx: int | None = None
+    for ri, row in enumerate(table_rows):
+        if row and re.search(r"personal\s*accident\s*benefits", row[0], re.I):
+            pa_header_idx = ri
+            break
+
+    if pa_header_idx is not None:
+        # The header cell lists items a) b) c) … inline. Collect value rows by
+        # skipping any all-empty rows immediately after the header (gap rows).
+        header_cell = table_rows[pa_header_idx][0]
+        items = re.findall(r"[a-z]\)", header_cell)
+
+        # Gather value rows: skip rows where plan_col has no value at all
+        val_rows: list[list[str]] = []
+        for _ri in range(pa_header_idx + 1, len(table_rows)):
+            r = table_rows[_ri]
+            if r[0].strip():
+                break  # hit a new labelled section
+            # Only count rows that have at least one non-empty cell beyond col 0
+            if any(c.strip() for c in r[1:]):
+                val_rows.append(r)
+            if len(val_rows) >= len(items):
+                break
+
+        b_idx = next((i for i, t in enumerate(items) if t == "b)"), None)
+        if b_idx is not None and b_idx < len(val_rows):
+            if _cell_val(val_rows[b_idx], plan_col) > 0:
+                addons["Personal Accident (Owner Driver)"] = "Yes"
+        e_idx = next((i for i, t in enumerate(items) if t == "e)"), None)
+        if e_idx is not None and e_idx < len(val_rows):
+            if _cell_val(val_rows[e_idx], plan_col) > 0:
+                addons["Legal Liability to Paid Driver"] = "Yes"
+
+    # 6. Return the selected plan's total premium.
+    # The "TOTAL PREMIUM PAYABLE" row may use a compact 4-column layout
+    # [label, PlanA, PlanB, PlanC] rather than the 13-column add-on layout.
+    plan_order = {"A": 1, "B": 2, "C": 3}
+    compact_col = plan_order.get(selected_plan, 3)
+    for row in table_rows:
+        if row and re.search(r"total\s*premium\s*payable", row[0], re.I):
+            # Try compact layout first (4 cols), then full-width layout
+            for col_try in (compact_col, plan_col):
+                val = _cell_val(row, col_try)
+                if val > 1000:
+                    return val
+
+    return None
+
+
 # ─── public entry point ───────────────────────────────────────────────────────
 
 def extract_policy_data(path: str) -> dict:
-    full_text_py, lines_py = _pymupdf_lines(path)
-    plumber = _plumber_text(path)
+    # ── Image file support (PNG, JPG, etc.) ──────────────────────────────────
+    ext = _os.path.splitext(path)[1].lower()
+    if ext in ('.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.tif'):
+        full_text, lines = _ocr_image(path)
+        if not full_text.strip():
+            raise ValueError("No text extracted from image — check Tesseract is installed.")
+        full_text_py = full_text
+        plumber      = ""
+        table_rows   = []
+    else:
+        full_text_py, lines_py = _pymupdf_lines(path)
+        plumber = _plumber_text(path)
 
-    # Full text: use whichever is richer (pdfplumber captures layout text better)
-    full_text = plumber if len(plumber) > len(full_text_py) else full_text_py
+        # Full text: use whichever is richer (pdfplumber captures layout text better)
+        full_text = plumber if len(plumber) > len(full_text_py) else full_text_py
 
-    # Lines: ALWAYS use PyMuPDF — pdfplumber layout mode merges table columns
-    # onto one line, causing false Yes/No matches and wrong KV field values.
-    lines = lines_py if lines_py else [l for l in plumber.splitlines() if l.strip()]
+        # Lines: ALWAYS use PyMuPDF — pdfplumber layout mode merges table columns
+        # onto one line, causing false Yes/No matches and wrong KV field values.
+        lines = lines_py if lines_py else [l for l in plumber.splitlines() if l.strip()]
 
-    # ── OCR fallback for image-based PDFs ────────────────────────────────────
-    doc_tmp = fitz.open(path)
-    num_pages = doc_tmp.page_count
-    doc_tmp.close()
+        # ── OCR fallback for image-based PDFs ──────────────────────────────
+        doc_tmp = fitz.open(path)
+        num_pages = doc_tmp.page_count
+        doc_tmp.close()
 
-    if _text_is_sparse(full_text, lines, num_pages):
-        ocr_text, ocr_lines = _ocr_pdf(path)
-        if ocr_text.strip():
-            full_text = ocr_text
-            lines     = ocr_lines
+        if _text_is_sparse(full_text, lines, num_pages):
+            ocr_text, ocr_lines = _ocr_pdf(path)
+            if ocr_text.strip():
+                full_text = ocr_text
+                lines     = ocr_lines
 
-    if not full_text.strip():
-        raise ValueError("No text extracted — PDF may be scanned/image-only and Tesseract is not installed.")
+        if not full_text.strip():
+            raise ValueError("No text extracted — PDF may be scanned/image-only and Tesseract is not installed.")
 
-    table_rows = _plumber_tables(path)
+        table_rows = _plumber_tables(path)
     kv = _build_kv(lines)
     for row in table_rows:
         # Process every adjacent pair of columns so 4-column layouts
@@ -1137,6 +1354,9 @@ def extract_policy_data(path: str) -> dict:
         "carmake", "carmodel", "make", "model", "vehicle",
     ) or "N/A"
     vehicle_model = re.sub(r"^[^\w]+", "", vehicle_model)
+    # Reject garbled OCR table headers that got picked up as "vehicle" KV values
+    if re.search(r"\bidv\b|cng[\s/]*lpg|total\s+idv|electrical\s+access|premium\b", vehicle_model, re.I):
+        vehicle_model = "N/A"
 
     insured_name = _kv_lookup(kv,
         "clientname", "nameofinsured", "insuredname",
@@ -1176,7 +1396,18 @@ def extract_policy_data(path: str) -> dict:
 
     registration_number = _find_registration(full_text, kv)
     expiry_date         = _find_expiry(full_text, kv, lines)
+    # Pdfplumber sometimes merges words without spaces ("RoyalSundaram"), so
+    # always check the PyMuPDF text as a fallback for insurer detection.
     insurer             = _detect_insurer(full_text)
+    if insurer == "N/A":
+        insurer = _detect_insurer(full_text_py)
+    if insurer == "N/A":
+        # Last resort: match known insurer names against the filename itself
+        _fname = _os.path.basename(path).lower()
+        for _ins_name, _ins_pats in KNOWN_INSURERS:
+            if any(re.search(p, _fname, re.I) for p in _ins_pats):
+                insurer = _ins_name
+                break
     plan_coverage       = _detect_plan_coverage(full_text)
 
     # ── IDV — require large value (car IDVs are typically > 1 lakh) ──────────
@@ -1187,6 +1418,9 @@ def extract_policy_data(path: str) -> dict:
             r"total\s+idv\b",
             r"insured\s+declared\s+value\s*\(?idv\)?",
             r"\bidv\s+of\s+vehicle\b",
+            # ICICI OCR layout: "Insured declared Rs/₹/2 4855218" (₹ may OCR as digit)
+            r"insured\s+declared\s+(?:rs\.?|inr|₹)",
+            r"insured\s+declared\b",  # catch when ₹ OCRs as digit or is absent
             r"\bidv\b",
         ],
         fallback_patterns=[r"sum\s+insured\b", r"declared\s+value\b"],
@@ -1198,7 +1432,11 @@ def extract_policy_data(path: str) -> dict:
     # Tata AIG PDFs show "TOTAL PREMIUM ₹X" then "Final Premium With Road Side
     # Assistance ₹Y". We want Y (the actual amount paid), so check the most
     # specific/final phrase first before falling back to bare "total premium".
-    premium = _find_amount(lines, table_rows,
+    # Go Digit PDFs: "Final Premium 146967.07" appears inline only in pdfplumber
+    # layout text, not in PyMuPDF lines. Include plumber lines as a fallback search
+    # source so the value is found when pymupdf line-search fails.
+    plumber_lines = [l.strip() for l in plumber.splitlines() if l.strip()] if plumber else []
+    premium = _find_amount(lines + plumber_lines, table_rows,
         primary_patterns=[
             r"final\s+premium\s+with\s+road\s+side\s+assistance",  # Tata AIG
             r"total\s+premium\s+payable",
@@ -1210,6 +1448,7 @@ def extract_policy_data(path: str) -> dict:
             r"net\s+premium\s+payable",
             r"total\s+amount\s+(?:due|payable)",
             r"(?:gross|net)\s+premium(?!\s+payable)",
+            r"^\s*premium\b",       # New India image: bare "PREMIUM 101685.00"
         ],
         min_value=1000,
     )
@@ -1236,6 +1475,25 @@ def extract_policy_data(path: str) -> dict:
             addons[k] = "No"
         if plan_name_clean:
             _apply_bajaj_plan_addons(plan_name, full_text, addons)
+        else:
+            # Bajaj policy document (not a quote): add-ons listed in note
+            # "Add On Includes Zero Depreciation Cover, Consumables Cover, ..."
+            _note_m = re.search(r"add[\s\-]*on\s+includes?\s+", full_text, re.I)
+            if _note_m:
+                # Grab up to 600 chars after the marker (may span multiple OCR lines)
+                _note_text = full_text[_note_m.end():_note_m.end() + 600]
+                for _addon_name, _addon_pat in _ADDON_COMPILED.items():
+                    if _addon_pat.search(_note_text):
+                        addons[_addon_name] = "Yes"
+
+    # ── Royal Sundaram multi-plan quote resolution ────────────────────────────
+    # RS quotes show Plan A / Plan B / Plan C side-by-side in one table.
+    # Generic keyword scanning fires on all three columns. Override: reset to No,
+    # detect the selected plan, then read only that column's values.
+    if insurer == "Royal Sundaram":
+        rs_premium = _rs_resolve_plan(lines, table_rows, addons)
+        if rs_premium is not None:
+            premium = rs_premium
 
     return {
         "product":               "Motor Insurance",
